@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: jenosize-article-generator
+    runtime: docker
+    plan: free
+    autoDeploy: false
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: BASE_MODEL_NAME
+        value: Qwen/Qwen2.5-3B-Instruct
+      - key: EMBEDDING_MODEL_NAME
+        value: sentence-transformers/all-MiniLM-L6-v2
+      - key: MODEL_ADAPTER_DIR
+        value: artifacts/qwen2_5_7b_jenosize_lora
