@@ -2,7 +2,7 @@
 
 A submission-ready Python prototype for **Option 1: Trend & Future Ideas Articles**.
 
-This repo is intentionally split into **layers** so an interviewer can inspect each part independently:
+This repo is intentionally split into **layers** 
 
 1. **Layer 1 — Dataset preparation**
 2. **Layer 2 — Fine-tuning**
@@ -235,7 +235,7 @@ The bootstrap layer writes a CSV with these fields:
 - `desired_length`
 - `source_dataset`
 
-## Interviewer explanation
+## Explanation
 This is the first visible **data acquisition + preprocessing layer**. It shows that the project does not assume a manually prepared dataset from the start.
 
 ---
@@ -287,7 +287,7 @@ python training/prepare_dataset.py --output-dir data/training
   - `data/training/train.jsonl`
   - `data/training/val.jsonl`
 
-## Interviewer explanation
+## explanation
 This layer is the **training-data transformation layer**. It turns processed article records into the exact chat/instruction format expected by the fine-tuning script.
 
 ---
@@ -334,7 +334,7 @@ Open `app/config.py` and tune:
 - `learning_rate`
 - `max_seq_length`
 
-## Interviewer explanation
+## explanation
 This layer satisfies the assignment requirement that the prototype must **fine-tune a pre-trained model**, not just call a hosted model with prompting.
 
 ---
@@ -361,7 +361,7 @@ python training/smoke_test_generation.py --base-model-name Qwen/Qwen2.5-7B-Instr
 - builds a small article-generation prompt
 - prints generated text
 
-## Interviewer explanation
+## explanation
 This is a minimal sanity-check layer between training and API deployment. It makes model loading errors visible early.
 
 ---
@@ -386,7 +386,7 @@ Convert user-provided `source_content` into **retrieved model-ready context**.
 - `app/rag/retriever.py`
 - `app/rag/prompt_builder.py`
 
-## Interviewer explanation
+## explanation
 This is **lightweight RAG**, not a full enterprise retrieval platform. It is intentionally simple because the assignment is short and the focus is still on fine-tuning plus deployment.
 
 ---
@@ -412,7 +412,7 @@ If the first generation score is low, the pipeline may:
 
 This is intentionally heuristic and limited to **one retry** to avoid over-engineering.
 
-## Interviewer explanation
+##  explanation
 This layer shows optimization awareness without building a heavy automated tuning system.
 
 ---
@@ -460,7 +460,7 @@ The API returns:
 - evaluation scores
 - final generation config used
 
-## Interviewer explanation
+##  explanation
 This layer demonstrates that the prototype is deployable and that retrieval, generation, and evaluation are orchestrated through a clean API surface.
 
 ---
@@ -482,7 +482,7 @@ If you need to explain the system quickly, use this order:
 - This is intentionally a **prototype**, not a production RAG platform.
 - Retrieval is rebuilt per request from the user’s source content to keep the design easy to reason about.
 - The evaluation/tuning loop is limited to one retry by design.
-- The default balance model is `Qwen/Qwen2.5-7B-Instruct`.
+- The default speed model is `Qwen/Qwen2.5-3B-Instruct` for minimal consuming hardware resource. 
 
 ---
 
@@ -501,7 +501,6 @@ python training/train_finetune.py
 python training/smoke_test_generation.py
 uvicorn app.api.main:app --reload
 ```
-
 ---
 
 ## 8) What each layer proves
@@ -530,36 +529,12 @@ docker build -t jenosize-article-generator .
 Run the container locally:
 
 ```bash
-docker run --rm -p 8000:8000   -e PORT=8000   -e BASE_MODEL_NAME=Qwen/Qwen2.5-3B-Instruct   -e EMBEDDING_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2   -e FINETUNED_MODEL_DIR=artifacts/qwen2_5_7b_jenosize_lora   jenosize-article-generator
+docker run --rm -p 8000:8000   -e PORT=8000   -e BASE_MODEL_NAME=Qwen/Qwen2.5-3B-Instruct   -e EMBEDDING_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2   -e FINETUNED_MODEL_DIR=artifacts/model_adapter   jenosize-article-generator
 ```
-
 Open:
 - API health check: `http://localhost:8000/health`
-- Swagger docs: `http://localhost:8000/docs`
 
-## Render Deployment
-This repository includes a `render.yaml` blueprint for simple web deployment on Render.
-
-### What the assignment requires
-The assignment explicitly requires deployment via an API using FastAPI or Flask, but it does **not** explicitly require a specific cloud provider or a mandatory cloud deployment command. A hosted prototype link is still useful for submission.
-
-### Deploy on Render
-1. Push this repository to GitHub.
-2. Create a new Render Web Service from the repo.
-3. Render will detect `render.yaml` and use the included Docker deployment configuration.
-4. Keep `autoDeploy: false` if you want manual control during the take-home test.
-5. After deploy, test:
-   - `/health`
-   - `/docs`
-   - `POST /v1/articles/generate`
-
-### Environment variables in render.yaml
-- `PORT=10000`
-- `BASE_MODEL_NAME=Qwen/Qwen2.5-3B-Instruct`
-- `EMBEDDING_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2`
-- `FINETUNED_MODEL_DIR=artifacts/qwen2_5_7b_jenosize_lora`
-
-### Practical note for interview/demo
+### Practical note for demo
 For hosted demo stability, prefer a lighter model in the deployment environment.
 - prefer **speed**: `Qwen/Qwen2.5-3B-Instruct`
 - prefer **balance**: `Qwen/Qwen2.5-7B-Instruct`

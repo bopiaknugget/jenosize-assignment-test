@@ -138,8 +138,8 @@ def main() -> None:
         save_steps=cfg.save_steps,
         warmup_ratio=cfg.warmup_ratio,
         lr_scheduler_type=cfg.lr_scheduler_type,
-        bf16=False,
-        fp16=torch.cuda.is_available(), #use fp16 for saving hardware resource
+        bf16=torch.cuda.is_available(),
+        fp16=False, #use fp16 for saving hardware resource
         report_to="none",
         save_total_limit=2,
         load_best_model_at_end=True,

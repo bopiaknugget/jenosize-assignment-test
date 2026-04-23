@@ -8,7 +8,7 @@ from typing import Dict
 class GenerationConfig:
     temperature: float = 0.7
     top_p: float = 0.9
-    max_new_tokens: int = 900
+    max_new_tokens: int = 700
     retrieval_top_k: int = 4
     repetition_penalty: float = 1.1
 
@@ -30,7 +30,7 @@ class SimpleTuner:
         if scores.get("groundedness_score", 1.0) < 0.6:
             tuned.retrieval_top_k = min(6, tuned.retrieval_top_k + 1)
         if scores.get("length_compliance", 1.0) < 0.8:
-            tuned.max_new_tokens = min(1200, tuned.max_new_tokens + 150)
+            tuned.max_new_tokens = min(900, tuned.max_new_tokens + 100)
         if scores.get("readability_score", 1.0) < 0.7:
             tuned.repetition_penalty = min(1.25, tuned.repetition_penalty + 0.05)
             tuned.temperature = max(0.45, tuned.temperature - 0.05)

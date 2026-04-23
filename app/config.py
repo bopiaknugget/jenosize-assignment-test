@@ -48,7 +48,7 @@ class RetrievalConfig:
 @dataclass
 class GenerationRuntimeConfig:
     article_length: str = "900-1200 words"
-    max_new_tokens: int = 900
+    max_new_tokens: int = 600
     temperature: float = 0.7
     top_p: float = 0.9
     repetition_penalty: float = 1.1

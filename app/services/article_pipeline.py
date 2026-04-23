@@ -39,7 +39,7 @@ class ArticlePipeline:
         best_scores: Dict[str, float] = {"final_score": 0.0}
         best_chunks: List[Tuple[str, float]] = []
 
-        for _ in range(2):
+        for _ in range(1): # Single iteration for now; can be increased for multiple retries
             chunks = self.retriever.retrieve(
                 source_text=source_content,
                 query=query,
