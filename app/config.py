@@ -16,7 +16,7 @@ class ModelCatalog:
 
 @dataclass
 class TrainingConfig:
-    base_model_name: str = "Qwen/Qwen2.5-7B-Instruct"
+    base_model_name: str = "Qwen/Qwen2.5-3B-Instruct" #using speed strategy optimized for running on T4
     train_file: Path = Path("data/training/train.jsonl")
     validation_file: Path = Path("data/training/val.jsonl")
     output_dir: Path = Path("artifacts/model_adapter")

@@ -36,8 +36,8 @@ def parse_args() -> argparse.Namespace:
         description='Bootstrap a prototype training CSV from Hugging Face datasets for the Jenosize article generator.'
     )
     parser.add_argument('--output', type=Path, default=DEFAULT_OUTPUT, help='Path to output CSV.')
-    parser.add_argument('--medium-limit', type=int, default=80, help='Maximum filtered samples from the Medium dataset.')
-    parser.add_argument('--reuters-limit', type=int, default=40, help='Maximum filtered samples from the Reuters dataset.')
+    parser.add_argument('--medium-limit', type=int, default=30, help='Maximum filtered samples from the Medium dataset.')
+    parser.add_argument('--reuters-limit', type=int, default=15, help='Maximum filtered samples from the Reuters dataset.')
     parser.add_argument(
         '--target-audience',
         default='Business Executives',
