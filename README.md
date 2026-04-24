@@ -116,37 +116,37 @@ The repo now supports both **CLI-based model selection** for training/smoke test
 Use the balanced default:
 
 ```bash
-python training/train_finetune.py --model-strategy balance
+python -m training.train_finetune --model-strategy balance
 ```
 
 Prefer speed:
 
 ```bash
-python training/train_finetune.py --model-strategy speed
+python -m training.train_finetune --model-strategy speed
 ```
 
 Prefer accuracy:
 
 ```bash
-python training/train_finetune.py --model-strategy accuracy
+python -m training.train_finetune --model-strategy accuracy
 ```
 
 Use an exact Hugging Face model ID:
 
 ```bash
-python training/train_finetune.py --base-model-name Qwen/Qwen2.5-7B-Instruct
+python -m training.train_finetune --base-model-name Qwen/Qwen2.5-7B-Instruct
 ```
 
 Override adapter output path:
 
 ```bash
-python training/train_finetune.py --model-strategy balance --output-dir artifacts/qwen_balance_adapter
+python -m training.train_finetune --model-strategy balance --output-dir artifacts/qwen_balance_adapter
 ```
 
 Smoke test with a speed-focused base model:
 
 ```bash
-python training/smoke_test_generation.py --model-strategy speed --model-dir artifacts/model_adapter
+python -m training.smoke_test_generation --model-strategy speed --model-dir artifacts/model_adapter
 ```
 
 ### API / deployment examples
@@ -209,14 +209,14 @@ Automatically download and filter seed training data from Hugging Face, then sav
 
 ## Run
 ```bash
-python training/bootstrap_hf_dataset.py
+python -m training.bootstrap_hf_dataset
 ```
 
 ### Useful options
 ```bash
-python training/bootstrap_hf_dataset.py --medium-limit 60 --reuters-limit 30
-python training/bootstrap_hf_dataset.py --output data/processed/article_training_source.csv
-python training/bootstrap_hf_dataset.py --no-streaming
+python -m training.bootstrap_hf_dataset --medium-limit 60 --reuters-limit 30
+python -m training.bootstrap_hf_dataset --output data/processed/article_training_source.csv
+python -m training.bootstrap_hf_dataset --no-streaming
 ```
 
 ## What it does
@@ -248,7 +248,7 @@ This is the first visible **data acquisition + preprocessing layer**. It shows t
 Clean the bootstrapped CSV with lightweight rule-based quality gates before creating fine-tuning JSONL.
 
 ## Expected input
-`training/bootstrap_hf_dataset.py` creates this automatically by default:
+`python -m training.bootstrap_hf_dataset` creates this automatically by default:
 
 ```text
 data/processed/article_training_source.csv
@@ -256,14 +256,14 @@ data/processed/article_training_source.csv
 
 ## Run
 ```bash
-python training/clean_data.py
+python -m training.clean_data
 ```
 
 ### Useful options
 ```bash
-python training/clean_data.py --input data/processed/article_training_source.csv --output data/processed/article_training_source_clean.csv
-python training/clean_data.py --rejected-output data/processed/article_training_source_rejected.csv
-python training/clean_data.py --allow-non-english
+python -m training.clean_data --input data/processed/article_training_source.csv --output data/processed/article_training_source_clean.csv
+python -m training.clean_data --rejected-output data/processed/article_training_source_rejected.csv
+python -m training.clean_data --allow-non-english
 ```
 
 ## What it does
@@ -288,7 +288,7 @@ This is a lightweight **data quality layer**. It improves the demo's fine-tuning
 Convert the cleaned processed CSV into a **chat-style supervised fine-tuning dataset**.
 
 ## Expected input
-`training/clean_data.py` creates this automatically by default:
+`python -m training.clean_data` creates this automatically by default:
 
 ```text
 data/processed/article_training_source_clean.csv
@@ -310,13 +310,13 @@ Optional columns:
 
 ## Run
 ```bash
-python training/prepare_dataset.py --source-path data/processed/article_training_source_clean.csv
+python -m training.prepare_dataset --source-path data/processed/article_training_source_clean.csv
 ```
 
 ### Useful options
 ```bash
-python training/prepare_dataset.py --source-path data/processed/article_training_source_clean.csv
-python training/prepare_dataset.py --output-dir data/training
+python -m training.prepare_dataset --source-path data/processed/article_training_source_clean.csv
+python -m training.prepare_dataset --output-dir data/training
 ```
 
 ## What it does
@@ -346,14 +346,14 @@ Recommended default:
 
 ## Run
 ```bash
-python training/train_finetune.py --model-strategy balance
+python -m training.train_finetune --model-strategy balance
 ```
 
 Alternative runs:
 ```bash
-python training/train_finetune.py --model-strategy speed
-python training/train_finetune.py --model-strategy accuracy
-python training/train_finetune.py --base-model-name Qwen/Qwen2.5-7B-Instruct
+python -m training.train_finetune --model-strategy speed
+python -m training.train_finetune --model-strategy accuracy
+python -m training.train_finetune --base-model-name Qwen/Qwen2.5-7B-Instruct
 ```
 
 ## What it does
@@ -388,13 +388,13 @@ Verify that the saved adapter/model can generate a grounded article-like respons
 
 ## Run
 ```bash
-python training/smoke_test_generation.py --model-strategy balance
+python -m training.smoke_test_generation --model-strategy balance
 ```
 
 Alternative runs:
 ```bash
-python training/smoke_test_generation.py --model-strategy speed
-python training/smoke_test_generation.py --base-model-name Qwen/Qwen2.5-7B-Instruct --model-dir artifacts/model_adapter
+python -m training.smoke_test_generation --model-strategy speed
+python -m training.smoke_test_generation --base-model-name Qwen/Qwen2.5-7B-Instruct --model-dir artifacts/model_adapter
 ```
 
 ## What it does
@@ -423,13 +423,13 @@ Merge the LoRA adapter in `artifacts/model_adapter` into its base model and conv
 Merge only:
 
 ```bash
-python training/export_gguf.py --skip-gguf
+python -m training.export_gguf --skip-gguf
 ```
 
 Merge and export GGUF:
 
 ```bash
-python training/export_gguf.py \
+python -m training.export_gguf \
   --adapter-dir artifacts/model_adapter \
   --merged-dir artifacts/model_merged \
   --gguf-path artifacts/qwen2.5-3b-jenosize-f16.gguf \
@@ -439,7 +439,7 @@ python training/export_gguf.py \
 Optional quantized export:
 
 ```bash
-python training/export_gguf.py \
+python -m training.export_gguf \
   --adapter-dir artifacts/model_adapter \
   --merged-dir artifacts/model_merged \
   --gguf-path artifacts/qwen2.5-3b-jenosize-f16.gguf \
@@ -579,17 +579,17 @@ This layer demonstrates that the prototype is deployable and that retrieval, gen
 
 ### Fastest path for a reviewer
 ```bash
-python training/smoke_test_generation.py
+python -m training.smoke_test_generation
 uvicorn app.api.main:app --reload
 ```
 
 ### Full path
 ```bash
-python training/bootstrap_hf_dataset.py
-python training/clean_data.py
-python training/prepare_dataset.py --source-path data/processed/article_training_source_clean.csv
-python training/train_finetune.py --model-strategy speed --use-4bit true --max-seq-length 1024
-python training/smoke_test_generation.py
+python -m training.bootstrap_hf_dataset
+python -m training.clean_data
+python -m training.prepare_dataset --source-path data/processed/article_training_source_clean.csv
+python -m training.train_finetune --model-strategy speed --use-4bit true --max-seq-length 1024
+python -m training.smoke_test_generation
 uvicorn app.api.main:app --reload
 ```
 ---

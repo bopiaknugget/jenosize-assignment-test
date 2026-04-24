@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import torch
 from peft import AutoPeftModelForCausalLM
@@ -62,6 +63,30 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Output path for a quantized GGUF. Required when --quantize is used.",
     )
+    parser.add_argument(
+        "--device-map",
+        default="auto",
+        help=(
+            "Device map for loading the adapter before merge. "
+            "Use 'auto' for Colab T4 GPU mapping, 'cuda:0' to force one GPU, or 'cpu' as a fallback."
+        ),
+    )
+    parser.add_argument(
+        "--torch-dtype",
+        choices=["auto", "float16", "bfloat16", "float32"],
+        default="auto",
+        help="Torch dtype for model loading. 'auto' selects float16 on CUDA and float32 on CPU.",
+    )
+    parser.add_argument(
+        "--max-gpu-memory",
+        default="14GiB",
+        help="Per-GPU max memory for device_map='auto'. 14GiB leaves headroom on a 16GB Colab T4.",
+    )
+    parser.add_argument(
+        "--max-cpu-memory",
+        default="24GiB",
+        help="CPU RAM budget used by accelerate when device_map='auto'.",
+    )
     return parser.parse_args()
 
 
@@ -82,19 +107,54 @@ def load_base_model_name(adapter_dir: Path, override: str | None) -> str:
     return base_model_name
 
 
-def merge_adapter(adapter_dir: Path, base_model_name: str, merged_dir: Path) -> None:
+def resolve_torch_dtype(dtype_name: str) -> torch.dtype:
+    if dtype_name == "float16":
+        return torch.float16
+    if dtype_name == "bfloat16":
+        return torch.bfloat16
+    if dtype_name == "float32":
+        return torch.float32
+    return torch.float16 if torch.cuda.is_available() else torch.float32
+
+
+def build_max_memory(device_map: str, max_gpu_memory: str, max_cpu_memory: str) -> dict[Any, str] | None:
+    if device_map != "auto":
+        return None
+
+    max_memory: dict[Any, str] = {"cpu": max_cpu_memory}
+    for index in range(torch.cuda.device_count()):
+        max_memory[index] = max_gpu_memory
+    return max_memory
+
+
+def merge_adapter(
+    adapter_dir: Path,
+    base_model_name: str,
+    merged_dir: Path,
+    device_map: str,
+    torch_dtype: torch.dtype,
+    max_memory: dict[Any, str] | None,
+) -> None:
     if not adapter_dir.exists():
         raise FileNotFoundError(f"Adapter directory does not exist: {adapter_dir}")
 
     print(f"Merging adapter from: {adapter_dir}")
     print(f"Using base model: {base_model_name}")
     print(f"Saving merged model to: {merged_dir}")
+    print(f"CUDA available: {torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
+    print(f"Device map: {device_map}")
+    print(f"Torch dtype: {torch_dtype}")
+    if max_memory:
+        print(f"Max memory: {max_memory}")
 
-    torch_dtype = torch.float16 if torch.cuda.is_available() else torch.float32
     model = AutoPeftModelForCausalLM.from_pretrained(
         str(adapter_dir),
         torch_dtype=torch_dtype,
-        device_map="cpu",
+        device_map=device_map,
+        max_memory=max_memory,
+        low_cpu_mem_usage=True,
         trust_remote_code=True,
     )
     tokenizer = AutoTokenizer.from_pretrained(str(adapter_dir), trust_remote_code=True)
@@ -193,8 +253,17 @@ def quantize_gguf(
 def main() -> None:
     args = parse_args()
     base_model_name = load_base_model_name(args.adapter_dir, args.base_model_name)
+    torch_dtype = resolve_torch_dtype(args.torch_dtype)
+    max_memory = build_max_memory(args.device_map, args.max_gpu_memory, args.max_cpu_memory)
 
-    merge_adapter(args.adapter_dir, base_model_name, args.merged_dir)
+    merge_adapter(
+        args.adapter_dir,
+        base_model_name,
+        args.merged_dir,
+        args.device_map,
+        torch_dtype,
+        max_memory,
+    )
 
     if args.skip_gguf:
         print("Skipping GGUF conversion as requested.")

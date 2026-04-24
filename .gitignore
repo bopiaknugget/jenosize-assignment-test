@@ -1,3 +1,7 @@
+# .gitignore for Jenosize Assignment
+# non-related files
+instructions.md
+
 # Python
 __pycache__/
 *.py[cod]
@@ -5,6 +9,7 @@ __pycache__/
 .venv/
 venv/
 env/
+
 
 # Build / packaging
 build/
