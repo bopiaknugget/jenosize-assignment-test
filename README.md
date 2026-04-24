@@ -67,6 +67,7 @@ app/
   config.py
 training/
   bootstrap_hf_dataset.py
+  clean_data.py
   prepare_dataset.py
   train_finetune.py
   smoke_test_generation.py
@@ -74,6 +75,7 @@ Dockerfile
 render.yaml
 requirements.txt
 README.md
+README.data
 ```
 
 ---
@@ -174,7 +176,7 @@ Supported environment variables:
 
 ## 5) Data sources used in this prototype
 
-This prototype now supports **automatic dataset bootstrap from Hugging Face** before `prepare_dataset.py` runs.
+This prototype now supports **automatic dataset bootstrap from Hugging Face**, a lightweight cleaning pass, and chat-format conversion before fine-tuning.
 
 ### Auto-loaded datasets
 1. `Alaamer/medium-articles-posts-with-content`
@@ -240,16 +242,56 @@ This is the first visible **data acquisition + preprocessing layer**. It shows t
 
 ---
 
-# Layer 1B — Convert processed CSV into chat-style fine-tuning JSONL
+# Layer 1B — Clean processed dataset
 
 ## Purpose
-Convert the processed CSV into a **chat-style supervised fine-tuning dataset**.
+Clean the bootstrapped CSV with lightweight rule-based quality gates before creating fine-tuning JSONL.
 
 ## Expected input
 `training/bootstrap_hf_dataset.py` creates this automatically by default:
 
 ```text
 data/processed/article_training_source.csv
+```
+
+## Run
+```bash
+python training/clean_data.py
+```
+
+### Useful options
+```bash
+python training/clean_data.py --input data/processed/article_training_source.csv --output data/processed/article_training_source_clean.csv
+python training/clean_data.py --rejected-output data/processed/article_training_source_rejected.csv
+python training/clean_data.py --allow-non-english
+```
+
+## What it does
+- removes rows with obvious encoding corruption
+- removes likely non-English rows by default
+- removes rows with too many URLs
+- trims boilerplate such as bibliography, references, author notes, and learn-more sections
+- removes weak titles such as drafts, tests, registrations, and invitations
+- enforces simple source/article length bounds
+- rejects rows where `source_content` is too close to `article_body`
+- shuffles with a fixed seed to reduce source-order bias before train/validation splitting
+- creates `data/processed/article_training_source_clean.csv`
+
+## Explanation
+This is a lightweight **data quality layer**. It improves the demo's fine-tuning signal without adding heavy infrastructure or model-based filtering. It is especially useful for a T4 Colab demo because a small clean dataset is usually better than a larger noisy one.
+
+---
+
+# Layer 1C — Convert cleaned CSV into chat-style fine-tuning JSONL
+
+## Purpose
+Convert the cleaned processed CSV into a **chat-style supervised fine-tuning dataset**.
+
+## Expected input
+`training/clean_data.py` creates this automatically by default:
+
+```text
+data/processed/article_training_source_clean.csv
 ```
 
 You may also provide your own processed file with the same required columns.
@@ -268,12 +310,12 @@ Optional columns:
 
 ## Run
 ```bash
-python training/prepare_dataset.py
+python training/prepare_dataset.py --source-path data/processed/article_training_source_clean.csv
 ```
 
 ### Useful options
 ```bash
-python training/prepare_dataset.py --source-path data/processed/article_training_source.csv
+python training/prepare_dataset.py --source-path data/processed/article_training_source_clean.csv
 python training/prepare_dataset.py --output-dir data/training
 ```
 
@@ -287,7 +329,7 @@ python training/prepare_dataset.py --output-dir data/training
   - `data/training/train.jsonl`
   - `data/training/val.jsonl`
 
-## explanation
+## Explanation
 This layer is the **training-data transformation layer**. It turns processed article records into the exact chat/instruction format expected by the fine-tuning script.
 
 ---
@@ -334,7 +376,7 @@ Open `app/config.py` and tune:
 - `learning_rate`
 - `max_seq_length`
 
-## explanation
+## Explanation
 This layer satisfies the assignment requirement that the prototype must **fine-tune a pre-trained model**, not just call a hosted model with prompting.
 
 ---
@@ -363,6 +405,55 @@ python training/smoke_test_generation.py --base-model-name Qwen/Qwen2.5-7B-Instr
 
 ## explanation
 This is a minimal sanity-check layer between training and API deployment. It makes model loading errors visible early.
+
+---
+
+# Layer 3B - Export merged model to GGUF
+
+## Purpose
+Merge the LoRA adapter in `artifacts/model_adapter` into its base model and convert the merged Hugging Face model to GGUF for llama.cpp-style runtimes.
+
+## Important limitation
+`artifacts/model_adapter` is only a PEFT/LoRA adapter. A GGUF cannot be generated from the adapter alone. You must also have:
+- access to the base model `Qwen/Qwen2.5-3B-Instruct`
+- a working local Python environment with the repo dependencies installed
+- a local `llama.cpp` checkout or build that includes `convert_hf_to_gguf.py`
+
+## Run
+Merge only:
+
+```bash
+python training/export_gguf.py --skip-gguf
+```
+
+Merge and export GGUF:
+
+```bash
+python training/export_gguf.py \
+  --adapter-dir artifacts/model_adapter \
+  --merged-dir artifacts/model_merged \
+  --gguf-path artifacts/qwen2.5-3b-jenosize-f16.gguf \
+  --llama-cpp-dir /path/to/llama.cpp
+```
+
+Optional quantized export:
+
+```bash
+python training/export_gguf.py \
+  --adapter-dir artifacts/model_adapter \
+  --merged-dir artifacts/model_merged \
+  --gguf-path artifacts/qwen2.5-3b-jenosize-f16.gguf \
+  --quantize Q8_0 \
+  --quantized-gguf-path artifacts/qwen2.5-3b-jenosize-q8_0.gguf \
+  --llama-cpp-dir /path/to/llama.cpp
+```
+
+## What it does
+- reads the base model ID from `adapter_config.json` unless you override it
+- loads the adapter together with the base model
+- merges LoRA weights into a standard Hugging Face model directory
+- calls `llama.cpp` conversion to produce a `.gguf`
+- optionally runs `llama-quantize`
 
 ---
 
@@ -412,7 +503,7 @@ If the first generation score is low, the pipeline may:
 
 This is intentionally heuristic and limited to **one retry** to avoid over-engineering.
 
-##  explanation
+##  Explanation
 This layer shows optimization awareness without building a heavy automated tuning system.
 
 ---
@@ -465,9 +556,7 @@ This layer demonstrates that the prototype is deployable and that retrieval, gen
 
 ---
 
-## 5) Suggested interview walkthrough
-
-If you need to explain the system quickly, use this order:
+## 5) Suggested interviewer walkthrough
 
 1. **Data pipeline** prepares training data.
 2. **Fine-tuning layer** teaches style and structure.
@@ -496,8 +585,10 @@ uvicorn app.api.main:app --reload
 
 ### Full path
 ```bash
-python training/prepare_dataset.py
-python training/train_finetune.py
+python training/bootstrap_hf_dataset.py
+python training/clean_data.py
+python training/prepare_dataset.py --source-path data/processed/article_training_source_clean.csv
+python training/train_finetune.py --model-strategy speed --use-4bit true --max-seq-length 1024
 python training/smoke_test_generation.py
 uvicorn app.api.main:app --reload
 ```

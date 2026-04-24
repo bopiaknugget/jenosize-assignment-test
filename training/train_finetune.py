@@ -4,12 +4,13 @@ import argparse
 import copy
 import os
 from pathlib import Path
+from typing import Any
 
 import torch
 from datasets import load_dataset
 from peft import LoraConfig
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TrainingArguments
-from trl import SFTTrainer
+from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
+from trl import SFTConfig, SFTTrainer
 
 from app.config import CONFIG
 
@@ -34,6 +35,17 @@ def parse_args() -> argparse.Namespace:
         choices=["true", "false"],
         help="Override 4-bit QLoRA loading. Example: --use-4bit false",
     )
+    parser.add_argument(
+        "--max-seq-length",
+        type=int,
+        help="Maximum sequence length for SFT tokenization. Defaults to app/config.py.",
+    )
+    parser.add_argument(
+        "--dataset-num-proc",
+        type=int,
+        default=1,
+        help="Number of processes for dataset formatting. Keep 1 on Windows if multiprocessing is unstable.",
+    )
     return parser.parse_args()
 
 
@@ -46,7 +58,18 @@ def build_training_config(args: argparse.Namespace):
         cfg.output_dir = Path(args.output_dir)
     if args.use_4bit:
         cfg.use_4bit = args.use_4bit == "true"
+    if args.max_seq_length is not None:
+        if args.max_seq_length <= 0:
+            raise ValueError("--max-seq-length must be greater than 0.")
+        cfg.max_seq_length = args.max_seq_length
     return cfg
+
+
+def validate_training_files(cfg) -> None:
+    missing = [path for path in (cfg.train_file, cfg.validation_file) if not path.exists()]
+    if missing:
+        paths = ", ".join(str(path) for path in missing)
+        raise FileNotFoundError(f"Missing training data: {paths}. Run training/prepare_dataset.py first.")
 
 
 def get_tokenizer(model_name: str):
@@ -56,23 +79,37 @@ def get_tokenizer(model_name: str):
     return tokenizer
 
 
-def format_example(example: dict, tokenizer) -> dict:
-    text = tokenizer.apply_chat_template(
-        example["messages"],
-        tokenize=False,
-        add_generation_prompt=False,
-    )
-    return {"text": text}
+def format_batch(batch: dict[str, list[Any]], tokenizer) -> dict[str, list[str]]:
+    return {
+        "text": [
+            tokenizer.apply_chat_template(
+                messages,
+                tokenize=False,
+                add_generation_prompt=False,
+            )
+            for messages in batch["messages"]
+        ]
+    }
+
+
+def get_compute_dtype() -> torch.dtype:
+    if not torch.cuda.is_available():
+        return torch.float32
+    if torch.cuda.is_bf16_supported():
+        return torch.bfloat16
+    return torch.float16
 
 
 def main() -> None:
     args = parse_args()
     cfg = build_training_config(args)
     os.makedirs(cfg.output_dir, exist_ok=True)
+    validate_training_files(cfg)
 
     print(f"Using base model: {cfg.base_model_name}")
     print(f"Saving adapter to: {cfg.output_dir}")
     print(f"4-bit loading enabled: {cfg.use_4bit}")
+    print(f"Max sequence length: {cfg.max_seq_length}")
 
     tokenizer = get_tokenizer(cfg.base_model_name)
     dataset = load_dataset(
@@ -84,19 +121,27 @@ def main() -> None:
     )
 
     dataset = dataset.map(
-        lambda row: format_example(row, tokenizer),
+        format_batch,
+        fn_kwargs={"tokenizer": tokenizer},
+        batched=True,
+        num_proc=max(1, args.dataset_num_proc),
         remove_columns=dataset["train"].column_names,
+        desc="Applying chat templates",
     )
 
     quantization_config = None
-    torch_dtype = torch.bfloat16 if torch.cuda.is_available() else torch.float32
+    torch_dtype = get_compute_dtype()
     if cfg.use_4bit:
-        quantization_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_compute_dtype=torch.bfloat16,
-        )
+        if not torch.cuda.is_available():
+            print("4-bit loading requires CUDA; falling back to full-precision CPU loading.")
+            cfg.use_4bit = False
+        else:
+            quantization_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_compute_dtype=torch_dtype,
+            )
 
     model = AutoModelForCausalLM.from_pretrained(
         cfg.base_model_name,
@@ -106,6 +151,8 @@ def main() -> None:
         trust_remote_code=True,
     )
     model.config.use_cache = False
+    model.config.pad_token_id = tokenizer.pad_token_id
+    model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
 
     peft_config = LoraConfig(
         r=cfg.lora_r,
@@ -124,8 +171,7 @@ def main() -> None:
         ],
     )
 
-    training_args = TrainingArguments(
-
+    training_args = SFTConfig(
         output_dir=str(cfg.output_dir),
         per_device_train_batch_size=cfg.per_device_train_batch_size,
         per_device_eval_batch_size=cfg.per_device_eval_batch_size,
@@ -138,8 +184,16 @@ def main() -> None:
         save_steps=cfg.save_steps,
         warmup_ratio=cfg.warmup_ratio,
         lr_scheduler_type=cfg.lr_scheduler_type,
-        bf16=torch.cuda.is_available(),
-        fp16=False, #use fp16 for saving hardware resource
+        bf16=torch_dtype == torch.bfloat16,
+        fp16=torch_dtype == torch.float16,
+        optim="paged_adamw_8bit" if cfg.use_4bit else "adamw_torch",
+        gradient_checkpointing=True,
+        gradient_checkpointing_kwargs={"use_reentrant": False},
+        group_by_length=True,
+        dataset_num_proc=max(1, args.dataset_num_proc),
+        dataset_text_field="text",
+        max_length=cfg.max_seq_length,
+        packing=False,
         report_to="none",
         save_total_limit=2,
         load_best_model_at_end=True,
